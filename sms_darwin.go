@@ -29,23 +29,7 @@ func (i *iMessage) Handle(path string, c *markup.Lexer) error {
 	return i.cl.SendMessage(id, c.String())
 }
 
-func (i *iMessage) open(*fs.Control, string) error {
-	return nil
-}
-
-func (i *iMessage) close(*fs.Control, string) error {
-	return nil
-}
-
-func (i *iMessage) block(*fs.Control, *fs.Command) error {
-	return nil
-}
-
-func (i *iMessage) refresh(*fs.Control) error {
-	return nil
-}
-
-func (i *iMessage) restart(*fs.Control) error {
+func (i *iMessage) run(*fs.Control, *fs.Command) error {
 	return nil
 }
 

@@ -4,10 +4,7 @@ before:
     - go mod download
 builds:
 - goos:
-  - linux
-  - windows
   - darwin
-  - freebsd
   goarch: 
   - amd64
 signs:

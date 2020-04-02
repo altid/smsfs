@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 	"os"
@@ -13,10 +12,11 @@ import (
 )
 
 var (
-	mtpt  = flag.String("p", "/tmp/altid", "Path for filesystem")
-	srv   = flag.String("s", "sms", "Name of service")
-	debug = flag.Bool("d", false, "enable debug logging")
-	setup = flag.Bool("conf", false, "Run configuration setup")
+	mtpt    = flag.String("p", "/tmp/altid", "Path for filesystem")
+	srv     = flag.String("s", "sms", "Name of service")
+	cfgfile = flag.String("c", "", "Directory of configuration file")
+	debug   = flag.Bool("d", false, "enable debug logging")
+	setup   = flag.Bool("conf", false, "Run configuration setup")
 )
 
 func main() {
@@ -28,27 +28,26 @@ func main() {
 
 	u, _ := user.Current()
 	conf := &struct {
-		User          string
-		ListenAddress types.ListenAddress
-		Logdir        types.Logdir
+		User   string              `altid:"user,prompt:Your name to show in messages"`
+		Listen types.ListenAddress `altid:"listen_address,no_prompt"`
+		Logdir types.Logdir        `altid:"logdir,no_prompt"`
 	}{u.Name, "none", "none"}
 
 	if *setup {
-		if e := config.Create(conf, *srv, "", *debug); e != nil {
+		if e := config.Create(conf, *srv, *cfgfile, *debug); e != nil {
 			log.Fatal(e)
 		}
 
 		os.Exit(0)
 	}
 
-	if e := config.Marshal(conf, *srv, "", *debug); e != nil {
+	if e := config.Marshal(conf, *srv, *cfgfile, *debug); e != nil {
 		log.Fatal(e)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	s := &server{cancel, getRunner()}
+	s := &server{getRunner()}
 
-	ctrl, err := fs.CreateCtlFile(ctx, s, string(conf.Logdir), *mtpt, *srv, "feed", *debug)
+	ctrl, err := fs.New(s, string(conf.Logdir), *mtpt, *srv, "feed", *debug)
 	if err != nil {
 		log.Fatal(err)
 	}

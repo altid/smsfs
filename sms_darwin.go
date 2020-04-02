@@ -3,30 +3,41 @@ package main
 import (
 	"fmt"
 	"log"
-	"path"
 	"strconv"
+	"sync"
+	"time"
 
-	"github.com/alexdavid/sigma"
 	"github.com/altid/libs/fs"
 	"github.com/altid/libs/markup"
+	"github.com/halfwit/sigma"
 )
 
 type iMessage struct {
 	cl   sigma.Client
 	ctrl *fs.Control
+	user string
+	last map[int]int
+	sync.Mutex
 }
 
 func getRunner() *iMessage {
-	return &iMessage{}
+	return &iMessage{
+		last: make(map[int]int),
+	}
 }
 
-func (i *iMessage) Handle(path string, c *markup.Lexer) error {
-	id, err := strconv.Atoi(path)
+func (i *iMessage) handle(path string, c *markup.Lexer) error {
+	id, err := strconv.Atoi(path[1:])
 	if err != nil {
 		return err
 	}
 
-	return i.cl.SendMessage(id, c.String())
+	msg, err := c.String()
+	if err != nil {
+		return err
+	}
+
+	return i.cl.SendMessage(id, msg)
 }
 
 func (i *iMessage) run(*fs.Control, *fs.Command) error {
@@ -38,12 +49,52 @@ func (i *iMessage) quit() {
 }
 
 func (i *iMessage) listen() error {
-	// make a map of lastID
-	// update that map as we loop
-	return nil
+	ew, err := i.ctrl.ErrorWriter()
+	if err != nil {
+		return err
+	}
+
+	for {
+		chats, err := i.cl.Chats()
+		if err != nil {
+			return err
+		}
+
+		time.Sleep(time.Second * 3)
+
+		for _, chat := range chats {
+			go func(i *iMessage, chat sigma.Chat) {
+				msgs, err := i.cl.Messages(chat.ID, sigma.MessageFilter{
+					AfterID: i.last[chat.ID],
+				})
+
+				if err != nil {
+					fmt.Fprintf(ew, "%v\n", err)
+					return
+				}
+
+				if len(msgs) < 1 {
+					return
+				}
+
+				if !i.ctrl.HasBuffer(chat.DisplayName, "feed") {
+					i.ctrl.CreateBuffer(chat.DisplayName, "feed")
+					i.ctrl.Input(chat.DisplayName)
+				}
+
+				if e := i.buildMessage(chat, msgs); e != nil {
+					fmt.Fprintf(ew, "%v\n", e)
+					return
+				}
+
+			}(i, chat)
+		}
+	}
 }
 
 func (i *iMessage) setup(ctrl *fs.Control, user string) error {
+	i.ctrl = ctrl
+	i.user = user
 	cl, err := sigma.NewClient()
 	if err != nil {
 		log.Println("It's likely that you need to allow unlimited file access to your terminal appliations in privacy settings")
@@ -77,38 +128,37 @@ func (i *iMessage) setup(ctrl *fs.Control, user string) error {
 				return
 			}
 
-			if e := buildMessage(chat, ctrl, msgs, user); e != nil {
+			ctrl.CreateBuffer(chat.DisplayName, "feed")
+
+			if e := i.buildMessage(chat, msgs); e != nil {
 				fmt.Fprintf(ew, "%v\n", e)
 				return
 			}
 
-			input, err := fs.NewInput(i, path.Join(*mtpt, *srv), chat.DisplayName, *debug)
-			if err != nil {
-				fmt.Fprintf(ew, "%v\n", err)
-				return
-			}
-
-			input.Start()
+			i.ctrl.Input(chat.DisplayName)
 		}(chat)
 	}
 
 	return nil
 }
 
-func buildMessage(chat sigma.Chat, ctrl *fs.Control, msgs []sigma.Message, user string) error {
-	ctrl.CreateBuffer(chat.DisplayName, "feed")
-	mw, err := ctrl.MainWriter(chat.DisplayName, "feed")
+func (i *iMessage) buildMessage(chat sigma.Chat, msgs []sigma.Message) error {
+	mw, err := i.ctrl.MainWriter(chat.DisplayName, "feed")
 	if err != nil {
 		return err
 	}
 
 	defer mw.Close()
 
-	for i := len(msgs); i > 0; i-- {
-		if msgs[i-1].FromMe {
-			fmt.Fprintf(mw, "%%[%s](grey) %s\n", user, msgs[i-1].Text)
+	for n := len(msgs); n > 0; n-- {
+		i.Lock()
+		i.last[chat.ID] = msgs[n-1].ID
+		i.Unlock()
+
+		if msgs[n-1].FromMe {
+			fmt.Fprintf(mw, "%%[%s](grey) %s\n", i.user, msgs[n-1].Text)
 		} else {
-			fmt.Fprintf(mw, "%%[%s](blue) %s\n", chat.DisplayName, msgs[i-1].Text)
+			fmt.Fprintf(mw, "%%[%s](blue) %s\n", chat.DisplayName, msgs[n-1].Text)
 		}
 	}
 

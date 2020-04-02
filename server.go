@@ -1,10 +1,10 @@
 package main
 
 import (
-	"context"
 	"errors"
 
 	"github.com/altid/libs/fs"
+	"github.com/altid/libs/markup"
 )
 
 type runner interface {
@@ -12,11 +12,11 @@ type runner interface {
 	listen() error
 
 	run(*fs.Control, *fs.Command) error
+	handle(string, *markup.Lexer) error
 	quit()
 }
 type server struct {
-	cancel context.CancelFunc
-	cmd    runner
+	cmd runner
 }
 
 func (s *server) Run(c *fs.Control, cmd *fs.Command) error {
@@ -28,9 +28,12 @@ func (s *server) Run(c *fs.Control, cmd *fs.Command) error {
 	}
 }
 
+func (s *server) Handle(path string, c *markup.Lexer) error {
+	return s.cmd.handle(path, c)
+}
+
 func (s *server) Quit() {
 	s.cmd.quit()
-	s.cancel()
 }
 
 func (s *server) setup(ctrl *fs.Control, user string) error {

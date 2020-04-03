@@ -9,7 +9,7 @@ import (
 
 	"github.com/altid/libs/fs"
 	"github.com/altid/libs/markup"
-	"github.com/halfwit/sigma"
+	"github.com/alexdavid/sigma"
 )
 
 type iMessage struct {

@@ -1,15 +1,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"sync"
 	"time"
 
+	"github.com/alexdavid/sigma"
 	"github.com/altid/libs/fs"
 	"github.com/altid/libs/markup"
-	"github.com/alexdavid/sigma"
 )
 
 type iMessage struct {
@@ -27,17 +27,23 @@ func getRunner() *iMessage {
 }
 
 func (i *iMessage) handle(path string, c *markup.Lexer) error {
-	id, err := strconv.Atoi(path[1:])
-	if err != nil {
-		return err
-	}
-
 	msg, err := c.String()
 	if err != nil {
 		return err
 	}
 
-	return i.cl.SendMessage(id, msg)
+	chats, err := i.cl.Chats()
+	if err != nil {
+		return err
+	}
+
+	for _, chat := range chats {
+		if chat.DisplayName == path {
+			return i.cl.SendMessage(chat.ID, msg)
+		}
+	}
+
+	return errors.New("unable to find client")
 }
 
 func (i *iMessage) run(*fs.Control, *fs.Command) error {
